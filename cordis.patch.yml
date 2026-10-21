@@ -1,0 +1,14 @@
+# Bundle layer for dsh-secret-form.
+#
+# A profile that installs this package gets the plugin mounted here, so the
+# settings list can switch it off or remove it. Anything host-specific — most
+# often publicUrl — belongs in the profile's own patch as an id-targeted
+# override of `secret-form`, because a package cannot know the host's public
+# origin.
+- insert:
+    - id: secret-form
+      name: '@dr-co/dsh-secret-form'
+      config:
+        routePrefix: /secret
+        defaultTtlSeconds: 300
+        defaultLocale: en

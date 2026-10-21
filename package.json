@@ -1,6 +1,6 @@
 {
   "name": "@dr-co/dsh-secret-form",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One-time secret links for DeepSeek Harness: the model asks, the human types into a web form, the value lands in the credential store or a file.",
   "type": "module",
   "main": "./index.mjs",
@@ -12,7 +12,8 @@
     "index.mjs",
     "lib/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "cordis.patch.yml"
   ],
   "license": "MIT",
   "scripts": {
@@ -39,5 +40,10 @@
   "bugs": {
     "url": "https://github.com/unera/dsh-secret-form/issues"
   },
-  "author": "Dmitry Oboukhov"
+  "author": "Dmitry Oboukhov",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
 }

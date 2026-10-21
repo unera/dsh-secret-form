@@ -18,8 +18,10 @@ frameworks, light and dark from the same markup.
 
 ## Install
 
-The package ships no `dsh.bundle`, so `dsh plugin add` installs it as a plain
-dependency and a profile patch row actually mounts it.
+The package ships a `dsh.bundle` layer, so `dsh plugin add` both installs it and
+mounts it: it shows up in the settings plugin list, where it can be switched off
+or removed like any other plugin. Host-specific settings belong in the profile's
+own patch as an id-targeted override.
 
 ### From npm
 
