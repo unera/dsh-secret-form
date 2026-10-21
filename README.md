@@ -21,11 +21,27 @@ frameworks, light and dark from the same markup.
 The package ships no `dsh.bundle`, so `dsh plugin add` installs it as a plain
 dependency and a profile patch row actually mounts it.
 
+### From npm
+
 ```sh
 dsh plugin --profile <profile> add @dr-co/dsh-secret-form
-# or from a local checkout while developing
+```
+
+### From GitHub
+
+Pin a tag when you want a revision you can point at later; the repository root is
+the package, so no build step is involved.
+
+```sh
+dsh plugin --profile <profile> add "git+https://github.com/unera/dsh-secret-form.git#v0.1.0"
+# a particular commit
+dsh plugin --profile <profile> add "git+https://github.com/unera/dsh-secret-form.git#<sha>"
+# or a local checkout while developing
 dsh plugin --profile <profile> add file:$PWD/dsh-secret-form
 ```
+
+Either way the package ships no `dsh.bundle`, so it lands as a plain dependency
+and the profile patch row below is what actually mounts it.
 
 Mount it next to the two services it uses — the Web GUI host and the agent's
 tools:
@@ -34,10 +50,17 @@ tools:
 - id: secret-form
   name: '@dr-co/dsh-secret-form'
   config:
-    routePrefix: /secret        # default; must start with "/"
-    defaultTtlSeconds: 300      # default; every value is clamped to 30..3600
-    defaultLocale: en           # default; en|ru|de|fr|es|pt|zh|ja
+    routePrefix: /secret            # default; must start with "/"
+    defaultTtlSeconds: 300          # default; every value is clamped to 30..3600
+    defaultLocale: en               # default; en|ru|de|fr|es|pt|zh|ja
+    publicUrl: https://dsh.example.org   # optional; see below
 ```
+
+`publicUrl` matters behind a proxy: the listener usually binds loopback, so its
+own origin would produce a `http://127.0.0.1:3080/...` link that no phone can
+open. When `publicUrl` is set the returned link is built from it; when it is not,
+the plugin returns the listener origin unchanged and the model is told to hand it
+over as-is rather than invent a hostname.
 
 `routePrefix` moves the whole surface, which is what a host behind a path
 rewriter needs. `defaultTtlSeconds` is the TTL used when a call omits
