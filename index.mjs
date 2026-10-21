@@ -131,14 +131,14 @@ export function registerTools(ctx, { store, settings, logger }) {
 
   tools.register({
     name: 'secret_create',
-    description: 'Open a one-time web link where the human types a secret, instead of pasting it into the chat. Returns the absolute URL to hand over. The value is stored on the host and is never returned to you; call secret_result to learn whether it arrived.',
+    description: "Ask the human for a secret through a one-time web form instead of having it typed into the chat: chat history, transcripts and every provider request would keep a pasted key forever, while a form writes the value straight to the host.\n\nCreate the form, then put the returned url in your own reply to the human — that message is how they learn about the link. Call secret_result with the returned uuid to find out whether the value arrived; the value itself is never returned to you.\n\nThe link is built from the host public URL when one is configured, and otherwise from the web server own listener origin, such as http://127.0.0.1:3080, which resolves only on the host itself. Hand the url over exactly as returned and never rewrite it; if it points at loopback the human may not be able to open it, and saying that plainly is better than inventing a hostname.\n\nref names the key the value is stored under. With the default credentials target it is the credential name, for example OPENAI_API_KEY, and every other tool reads it by that name. With a file target it is the path inside that document: a flat .env takes a bare key (OPENAI_API_KEY), while structured .yaml and .json documents take a dotted path to the value, so ref.fooname writes a nested object and a single segment writes a top-level key.\n\nThe link accepts input for ttlSeconds (default 300) and works exactly once.",
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
         ref: {
           type: 'string',
-          description: 'Key name. With the default credentials target it is the credential reference, such as OPENAI_API_KEY. With a file target it is the path inside the document: ref.OPENAI_API_KEY for yaml/json, a bare key for .env.',
+          description: 'Key name. Credentials target: the credential name, e.g. OPENAI_API_KEY. File target: the path inside the document — a bare key for .env, a dotted path such as ref.fooname for .yaml and .json.',
         },
         label: {
           type: 'string',
@@ -151,29 +151,29 @@ export function registerTools(ctx, { store, settings, logger }) {
         },
         description: {
           type: 'string',
-          description: 'Optional one or two sentences shown under the title, at most 300 characters.',
+          description: 'Optional one or two sentences shown under the title, at most 300 characters. State what the value is for, so the human knows what to paste.',
         },
         save: {
           type: 'object',
           additionalProperties: true,
-          description: 'Where the value goes. Default { kind: "credentials" }. A file target is { kind: "file", path } where the extension picks the format: .yaml, .yml, .json or .env.',
+          description: 'Where the value goes. Default credentials. A file target is { kind: "file", path }; the extension picks the format — .yaml, .yml, .json or .env — and anything else is rejected. Missing directories are created, the file is written atomically with mode 0600, and unrelated keys in it are preserved.',
         },
         ttlSeconds: {
           type: 'integer',
-          description: 'How long the link accepts input, 30 to 3600 seconds. Default 300.',
+          description: 'How long the link accepts input, 30 to 3600 seconds. Default 300. After that the form reports expired.',
         },
         allowEmpty: {
           type: 'boolean',
-          description: 'Accept an empty submission and report it as empty. Default false: the page refuses to submit nothing.',
+          description: 'Accept an empty submission and report it as empty. Default false: the page refuses to submit nothing. Set it when an empty answer is itself meaningful.',
         },
         expect: {
           type: 'string',
-          description: 'Optional regular expression, as text, that the submitted value should match. Reported back as matchesExpect; it never blocks or delays the save.',
+          description: 'Optional regular expression, as text, the submitted value should match. Reported back as matchesExpect; it never blocks a save.',
         },
         data: {
           type: 'object',
           additionalProperties: true,
-          description: 'Optional JSON object, at most 1 KB, of bookkeeping for yourself. Echoed back by every secret tool and never shown on the page.',
+          description: 'Optional JSON object, at most 1 KB, of bookkeeping for yourself — a workflow id, a provider name, anything you want back later. Echoed by secret_result and secret_list and never shown on the page.',
         },
       },
       required: ['ref', 'label', 'kind'],
@@ -206,7 +206,7 @@ export function registerTools(ctx, { store, settings, logger }) {
 
   tools.register({
     name: 'secret_result',
-    description: 'Check a form created by secret_create. Never returns the value: only its status, length, line count, whether surrounding whitespace was stripped, and whether it matched expect. With waitSeconds above zero it waits for the human, then returns what it has.',
+    description: "Read the state of a form created by secret_create. The value is never returned: you learn whether it arrived and how it looks, which is normally enough to keep going.\n\nstatus is one of: pending (nobody has submitted or cancelled yet; no other fields are present, so an answer that carries only status and the booked data means the human has not acted), saved (the value was written), empty (an empty value was submitted under allowEmpty and nothing was written), cancelled (the human pressed Cancel or you called secret_cancel; nothing was written), expired (the link outlived ttlSeconds; nothing was written).\n\nFor saved and empty the answer also carries length in characters, lines, trimmed (whether surrounding whitespace was stripped) and, when the form was created with expect, matchesExpect.\n\nWith waitSeconds above zero the call waits for the form to leave pending, up to that many seconds, and then reports whatever state it holds — useful when the human is expected to submit right away. With the default of 0 it answers immediately.",
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -214,7 +214,7 @@ export function registerTools(ctx, { store, settings, logger }) {
         uuid: { type: 'string', description: 'The uuid returned by secret_create.' },
         waitSeconds: {
           type: 'integer',
-          description: `How long to wait for the form to leave pending, 0 to ${MAX_WAIT_SECONDS} seconds. Default 0.`,
+          description: `How long to wait for the form to leave pending, 0 to ${MAX_WAIT_SECONDS} seconds. Default 0: report the current state without waiting.`,
         },
       },
       required: ['uuid'],
@@ -230,7 +230,7 @@ export function registerTools(ctx, { store, settings, logger }) {
 
   tools.register({
     name: 'secret_list',
-    description: 'List every secret form this process created, oldest first, with its status and the data booked at creation. Never includes submitted values.',
+    description: "List the forms this process still knows about, oldest first, with uuid, ref, label, status, createdAt, expiresAt and the data booked at creation. Submitted values are never included. Forms live in process memory, so after a restart every pending form is gone and its link reads as expired; check this list before creating a second form for the same purpose.",
     parameters: { type: 'object', additionalProperties: false, properties: {} },
     output: listOutput,
     execute() {
@@ -240,7 +240,7 @@ export function registerTools(ctx, { store, settings, logger }) {
 
   tools.register({
     name: 'secret_cancel',
-    description: 'Cancel a pending secret form so its link stops accepting input. Cancelling a form that already finished reports its current status and changes nothing.',
+    description: "Cancel a pending form so its link stops accepting input and nothing is written. Use it when the request no longer stands: the workflow moved on, the human declined, or a new form replaces this one. Cancelling a form that already finished changes nothing and reports the status it already has.",
     parameters: {
       type: 'object',
       additionalProperties: false,
