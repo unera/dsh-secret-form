@@ -1,0 +1,34 @@
+{
+  "name": "@dr-co/dsh-secret-form",
+  "version": "0.1.0",
+  "description": "One-time secret links for DeepSeek Harness: the model asks, the human types into a web form, the value lands in the credential store or a file.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "secret",
+    "credentials"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
