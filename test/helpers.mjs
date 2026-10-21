@@ -72,28 +72,36 @@ export function createHost({ config, credentials, origin = 'http://127.0.0.1:308
   };
 }
 
-async function send(host, url, { method, body, contentType }) {
+async function send(host, url, { method, body, contentType, headers = {} }) {
   const route = host.route();
   if (route === undefined) throw new Error('no route registered');
   const request = Readable.from(body === undefined ? [] : [Buffer.from(body, 'utf8')]);
   request.method = method;
-  request.url = new URL(url, 'http://127.0.0.1').pathname;
-  request.headers = contentType === undefined ? {} : { 'content-type': contentType };
+  // The query string matters: `?lang=` is one of the ways a locale is chosen.
+  const parsed = new URL(url, 'http://127.0.0.1');
+  request.url = `${parsed.pathname}${parsed.search}`;
+  request.headers = { ...headers };
+  if (contentType !== undefined) request.headers['content-type'] = contentType;
   const response = createResponse();
   await route(request, response);
   return response;
 }
 
 /** Submit the form at `url` as the browser would. */
-export function post(host, url, fields) {
+export function post(host, url, fields, { headers } = {}) {
   return send(host, url, {
     method: 'POST',
     body: new URLSearchParams(fields).toString(),
     contentType: 'application/x-www-form-urlencoded',
+    headers,
   });
 }
 
-/** Open the page at `url`. */
-export function get(host, url, method = 'GET') {
-  return send(host, url, { method });
+/**
+ * Open the page at `url`.
+ * @param options - request headers, or a method name for the older call shape.
+ */
+export function get(host, url, options = {}) {
+  const { method = 'GET', headers } = typeof options === 'string' ? { method: options } : options;
+  return send(host, url, { method, headers });
 }

@@ -127,3 +127,110 @@ test('a form post without the form content type is refused', async () => {
   const response = await get(host, created.url, 'POST');
   assert.equal(response.statusCode, 415);
 });
+
+test('the Accept-Language header picks the page language', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: 'OpenAI key', kind: 'single' });
+  const page = await get(host, created.url, { headers: { 'accept-language': 'de' } });
+  assert.match(page.body, /<html lang="de">/);
+  assert.match(page.body, /<button class="save" type="submit" name="action" value="save">Speichern<\/button>/);
+  assert.match(page.body, /<button class="cancel" type="submit" name="action" value="cancel" formnovalidate>Abbrechen<\/button>/);
+  // The reveal toggle is read from the markup and rewritten from the inline
+  // script, so both copies have to be translated.
+  assert.match(page.body, /id="reveal" aria-pressed="false">Anzeigen<\/button>/);
+  assert.match(page.body, /hidden \? "Anzeigen" : "Ausblenden"/);
+
+  const saved = await post(host, created.url, { value: 'sk-abc', action: 'save', lang: 'de' });
+  assert.match(saved.body, /<title>Gespeichert<\/title>/);
+
+  // The second visit is the used page, also in German.
+  const used = await get(host, created.url, { headers: { 'accept-language': 'de' } });
+  assert.match(used.body, /<h1>Link schon benutzt<\/h1>/);
+});
+
+test('q-values rank the languages and an unsupported one falls back to English', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: 'OpenAI key', kind: 'single' });
+  const ranked = await get(host, created.url, { headers: { 'accept-language': 'fr;q=0.4, de-AT;q=0.9, en;q=0.5' } });
+  assert.match(ranked.body, /<html lang="de">/);
+  assert.match(ranked.body, />Speichern<\/button>/);
+
+  const unsupported = await get(host, created.url, { headers: { 'accept-language': 'fi-FI, sv;q=0.8' } });
+  assert.match(unsupported.body, /<html lang="en">/);
+  assert.match(unsupported.body, />Save<\/button>/);
+});
+
+test('an explicit lang query parameter wins over the header', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: 'OpenAI key', kind: 'single' });
+  const page = await get(host, `${created.url}?lang=zh-CN`, { headers: { 'accept-language': 'de' } });
+  assert.match(page.body, /<html lang="zh">/);
+  assert.match(page.body, />保存<\/button>/);
+  assert.match(page.body, /<input type="hidden" name="lang" value="zh">/);
+});
+
+test('the hidden lang field keeps the outcome page in the same language', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: 'OpenAI key', kind: 'single' });
+  const page = await get(host, `${created.url}?lang=de`);
+  assert.match(page.body, /<input type="hidden" name="lang" value="de">/);
+
+  // The browser's next request claims English, the form says German: the form wins.
+  const outcome = await post(
+    host,
+    created.url,
+    { value: 'sk-abc', action: 'save', lang: 'de' },
+    { headers: { 'accept-language': 'en' } },
+  );
+  assert.equal(outcome.statusCode, 200);
+  assert.match(outcome.body, /<html lang="de">/);
+  assert.match(outcome.body, /<h1>Gespeichert<\/h1>/);
+});
+
+test('defaultLocale applies when the request names no language', async () => {
+  const host = createHost({ config: { defaultLocale: 'ru' } });
+  const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: 'OpenAI key', kind: 'single' });
+  const page = await get(host, created.url);
+  assert.match(page.body, /<html lang="ru">/);
+  assert.match(page.body, />Сохранить<\/button>/);
+});
+
+test('an unsupported defaultLocale is refused at mount time', () => {
+  assert.throws(() => createHost({ config: { defaultLocale: 'klingon' } }), /defaultLocale must be one of/);
+});
+
+test('Russian renders all three plural forms of the remaining time', async () => {
+  const host = createHost();
+  const render = async (ttlSeconds) => {
+    const created = await host.call('secret_create', {
+      ref: 'A_KEY',
+      label: 'Test form',
+      kind: 'single',
+      ttlSeconds,
+    });
+    const page = await get(host, `${created.url}?lang=ru`);
+    return page.body;
+  };
+  assert.match(await render(30), /меньше чем через минуту/);
+  assert.match(await render(60), /через 1 минуту/);
+  assert.match(await render(180), /через 3 минуты/);
+  assert.match(await render(300), /через 5 минут/);
+});
+
+test('an expect pattern cannot break out of the inline script', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', {
+    ref: 'OPENAI_API_KEY',
+    label: 'OpenAI key',
+    kind: 'single',
+    expect: '^sk-.*</script><b>alert(1)</b>',
+  });
+  const page = await get(host, created.url);
+  assert.equal(page.body.includes('</script><b>'), false);
+  assert.equal(page.body.includes('<b>alert(1)</b>'), false);
+  assert.match(page.body, /\\u003c\/script>/);
+  // The reveal toggle and the expect hint share one inline script; a second tag
+  // would mean the pattern closed the element it lives in.
+  assert.equal(page.body.match(/<script>/g).length, 1);
+  assert.equal(page.body.match(/<\/script>/g).length, 1);
+});

@@ -36,11 +36,13 @@ tools:
   config:
     routePrefix: /secret        # default; must start with "/"
     defaultTtlSeconds: 300      # default; every value is clamped to 30..3600
+    defaultLocale: en           # default; en|ru|de|fr|es|pt|zh|ja
 ```
 
 `routePrefix` moves the whole surface, which is what a host behind a path
 rewriter needs. `defaultTtlSeconds` is the TTL used when a call omits
-`ttlSeconds`.
+`ttlSeconds`. `defaultLocale` is the wording used when neither the link nor the
+browser asks for a language; any other value is refused at mount time.
 
 The plugin declares `inject: ['tools', 'webServer']`: it cannot do anything
 without a Web GUI server to serve the page, and it registers its four tools on
@@ -106,7 +108,7 @@ and is left alone.
 | route | method | body | result |
 | --- | --- | --- | --- |
 | `<prefix>/<token>` | `GET`, `HEAD` | — | the form, or an outcome page |
-| `<prefix>/<token>` | `POST` | `application/x-www-form-urlencoded` with `value` and `action` (`save` or `cancel`) | an outcome page |
+| `<prefix>/<token>` | `POST` | `application/x-www-form-urlencoded` with `value`, `action` (`save` or `cancel`) and the hidden `lang` | an outcome page |
 
 Both responses carry `Cache-Control: no-store`, `Referrer-Policy: no-referrer`,
 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and
@@ -123,6 +125,22 @@ inline and both from this origin.
 Outcome pages have distinct wording: **Saved**, **Nothing stored** (empty
 submit), **Cancelled**, **Link already used**, **Link expired**, **Link not
 recognised**.
+
+### Languages
+
+The page's own wording exists in `en`, `ru`, `de`, `fr`, `es`, `pt`, `zh` and
+`ja`; the table lives in `lib/i18n.mjs`. The locale is chosen in this order:
+
+1. `?lang=de` on the link (`/secret/<token>?lang=de`), which also lets the model
+   pin one language for a link it hands over;
+2. the browser's `Accept-Language`, ranked by q-values and matched by primary
+   subtag, so `de-AT` and `zh-CN`/`zh-TW`/`zh-Hans` resolve as `de` and `zh`;
+3. `defaultLocale`, and English last.
+
+The form carries the resolved locale in a hidden `lang` field, which outranks
+the header on submit, so the outcome page stays in the language the reader
+started in. `<html lang="…">` follows the same value. The ref (`OPENAI_API_KEY`)
+is an identifier and stays as it is; everything around it is translated.
 
 ## Where the value goes
 

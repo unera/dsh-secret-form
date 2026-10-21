@@ -18,6 +18,7 @@ import {
   publicResult,
   publicSummary,
 } from './lib/forms.mjs';
+import { SUPPORTED_LOCALES, format, messagesFor, normalizeLocale, resolveLocale } from './lib/i18n.mjs';
 import { renderFormView, renderNotice, sendHtml, sendText } from './lib/page.mjs';
 import { assertRefForTarget, normalizeTarget, writeSecret } from './lib/targets.mjs';
 
@@ -29,6 +30,7 @@ export const inject = ['tools', 'webServer'];
 
 const DEFAULT_ROUTE_PREFIX = '/secret';
 const DEFAULT_TTL_SECONDS = 300;
+const DEFAULT_LOCALE = 'en';
 const MAX_BODY_BYTES = 64 * 1024;
 
 function invalidConfig(message) {
@@ -37,8 +39,8 @@ function invalidConfig(message) {
 
 /**
  * Validate the plugin config.
- * @param config - `routePrefix` (default `/secret`) and `defaultTtlSeconds`
- *   (default 300, clamped to 30..3600).
+ * @param config - `routePrefix` (default `/secret`), `defaultTtlSeconds`
+ *   (default 300, clamped to 30..3600) and `defaultLocale` (default `en`).
  */
 export function normalizeConfig(config = {}) {
   const prefixRaw = config?.routePrefix ?? DEFAULT_ROUTE_PREFIX;
@@ -66,7 +68,15 @@ export function normalizeConfig(config = {}) {
     }
     publicUrl = trimmed;
   }
-  return { routePrefix: prefix, defaultTtlSeconds: ttl, publicUrl };
+  // The page falls back to this locale when neither the link nor the browser
+  // asks for one, so a host known to serve one language can pin it.
+  const localeRaw = config?.defaultLocale ?? DEFAULT_LOCALE;
+  if (typeof localeRaw !== 'string') throw invalidConfig('defaultLocale must be a string');
+  const defaultLocale = normalizeLocale(localeRaw);
+  if (defaultLocale === undefined) {
+    throw invalidConfig(`defaultLocale must be one of: ${SUPPORTED_LOCALES.join(', ')}`);
+  }
+  return { routePrefix: prefix, defaultTtlSeconds: ttl, publicUrl, defaultLocale };
 }
 
 function resolveLogger(ctx) {
@@ -287,15 +297,20 @@ function isFormPost(request) {
 export function createRouteHandler({ store, settings, logger, credentialsOf, now = Date.now }) {
   const { routePrefix } = settings;
 
-  const pageFor = (form, extra) => renderFormView(form, {
+  const pageFor = (form, locale, extra = {}) => renderFormView(form, {
     actionPath: `${routePrefix}/${form.token}`,
     remainingSeconds: Math.max(0, Math.round((form.expiresAt - now()) / 1000)),
+    locale,
     ...extra,
   });
 
   return async function secretFormRoute(request, response) {
     const target = String(request.url ?? '/');
-    const path = target.includes('?') ? target.slice(0, target.indexOf('?')) : target;
+    const queryIndex = target.indexOf('?');
+    const path = queryIndex === -1 ? target : target.slice(0, queryIndex);
+    const query = new URLSearchParams(queryIndex === -1 ? '' : target.slice(queryIndex + 1));
+    const acceptLanguage = request.headers['accept-language'];
+    const localeFor = (lang) => resolveLocale({ lang, acceptLanguage, defaultLocale: settings.defaultLocale });
     if (!path.startsWith(`${routePrefix}/`)) {
       sendText(response, 404, 'Not found');
       return;
@@ -317,23 +332,27 @@ export function createRouteHandler({ store, settings, logger, credentialsOf, now
       return;
     }
 
+    // A link the model pinned with `?lang=` keeps that language for the whole
+    // exchange: the form carries it in a hidden field that outranks the header.
+    let locale = localeFor(query.get('lang') ?? undefined);
+
     const form = store.lookup(token);
     if (form === undefined) {
-      sendHtml(response, 404, renderNotice('unknown'));
+      sendHtml(response, 404, renderNotice('unknown', undefined, { locale }));
       return;
     }
 
     if (method !== 'POST') {
       if (form.status !== STATUS.pending) {
-        sendHtml(response, 200, renderNotice(noticeFor(form.status)), { head: method === 'HEAD' });
+        sendHtml(response, 200, renderNotice(noticeFor(form.status), undefined, { locale }), { head: method === 'HEAD' });
         return;
       }
-      sendHtml(response, 200, pageFor(form), { head: method === 'HEAD' });
+      sendHtml(response, 200, pageFor(form, locale), { head: method === 'HEAD' });
       return;
     }
 
     if (form.status !== STATUS.pending) {
-      sendHtml(response, 410, renderNotice(noticeFor(form.status)));
+      sendHtml(response, 410, renderNotice(noticeFor(form.status), undefined, { locale }));
       return;
     }
     if (!isFormPost(request)) {
@@ -349,29 +368,33 @@ export function createRouteHandler({ store, settings, logger, credentialsOf, now
       return;
     }
 
+    // The hidden field wins over the header: it is what the reader actually saw.
+    locale = localeFor(body.get('lang') ?? query.get('lang') ?? undefined);
+    const messages = messagesFor(locale);
+
     const action = body.get('action');
     if (action === 'cancel') {
       store.cancel(form);
       logger?.info?.(`[dsh-secret-form] cancelled ${tokenTag(token)}`);
-      sendHtml(response, 200, renderNotice('cancelled'));
+      sendHtml(response, 200, renderNotice('cancelled', undefined, { locale }));
       return;
     }
     if (action !== 'save') {
-      sendHtml(response, 400, pageFor(form, { error: 'The form was submitted without a recognised action.' }));
+      sendHtml(response, 400, pageFor(form, locale, { error: messages.errors.action }));
       return;
     }
 
     const submission = store.beginSubmit(form, body.get('value') ?? '');
     if (submission.outcome === 'invalid') {
-      sendHtml(response, 422, pageFor(form, { error: 'This field cannot be empty.' }));
+      sendHtml(response, 422, pageFor(form, locale, { error: messages.errors.empty }));
       return;
     }
     if (submission.outcome === 'busy') {
-      sendHtml(response, 409, pageFor(form, { error: 'This form is already being submitted.' }));
+      sendHtml(response, 409, pageFor(form, locale, { error: messages.errors.busy }));
       return;
     }
     if (submission.outcome !== 'ready') {
-      sendHtml(response, 410, renderNotice(noticeFor(form.status)));
+      sendHtml(response, 410, renderNotice(noticeFor(form.status), undefined, { locale }));
       return;
     }
 
@@ -380,16 +403,15 @@ export function createRouteHandler({ store, settings, logger, credentialsOf, now
     } catch (error) {
       store.abortSubmit(form);
       logger?.warn?.(`[dsh-secret-form] ${tokenTag(token)} could not be stored: ${error.message}`);
-      sendHtml(response, 500, pageFor(form, { error: `The value could not be stored: ${String(error.message).slice(0, 300)}` }));
+      const detail = String(error.message).slice(0, 300);
+      sendHtml(response, 500, pageFor(form, locale, { error: format(messages.errors.store, { detail }) }));
       return;
     }
 
     store.completeSubmit(form, submission);
     logger?.info?.(`[dsh-secret-form] ${tokenTag(token)} ${form.status}`);
-    const note = submission.matchesExpect === false
-      ? 'Saved, but the value did not match the expected format.'
-      : undefined;
-    sendHtml(response, 200, renderNotice(submission.empty ? 'empty' : 'saved', note));
+    const note = submission.matchesExpect === false ? messages.mismatchNote : undefined;
+    sendHtml(response, 200, renderNotice(submission.empty ? 'empty' : 'saved', note, { locale }));
   };
 }
 
