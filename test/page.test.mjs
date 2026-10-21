@@ -55,13 +55,16 @@ test('the page is self-contained, mobile-first and theme aware', async () => {
   assert.equal(/<(?:script|link)[^>]+(?:src|href)=/.test(page.body), false);
 });
 
-test('a single form renders a password field with a reveal toggle', async () => {
+test('a single form renders a one-row textarea instead of a password input', async () => {
   const host = createHost();
   const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: 'OpenAI key', kind: 'single' });
   const page = await get(host, created.url);
-  assert.match(page.body, /<input id="value" name="value" type="password"/);
+  // Firefox offers its password manager for input[type=password], and for text
+  // inputs it reads as login fields; a textarea is never treated as one.
+  assert.equal(page.body.includes('type="password"'), false, 'no field may attract the password manager');
+  assert.match(page.body, /<textarea id="value" name="value" rows="1" class="single masked"/);
+  assert.match(page.body, /id="mask"/);
   assert.match(page.body, /id="reveal"/);
-  assert.equal(page.body.includes('<textarea'), false);
   assert.match(page.body, /<button class="save" type="submit" name="action" value="save">Save<\/button>/);
   assert.match(page.body, /name="action" value="cancel"/);
 });

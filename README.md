@@ -213,3 +213,12 @@ with `node:test` mock timers instead of sleeping.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Why the single-line field is a textarea
+
+Firefox offers its password manager on `input[type=password]`, and on text inputs
+it heuristically reads as login fields (the same problem the Telegram bot card
+hit with its group reference). A `textarea` is never treated as a login field, so
+the single-line form uses a one-row textarea; the value is hidden by an overlay
+of bullets rather than by the element type, which keeps the reveal toggle working
+in every browser, including those without `-webkit-text-security`.
