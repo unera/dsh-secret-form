@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Secret forms",
+    "description": "One-time web links where the human types a secret into a form instead of the chat; the value lands in the credential store or a file."
+  }
+}

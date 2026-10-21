@@ -1,6 +1,6 @@
 {
   "name": "@dr-co/dsh-secret-form",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "One-time secret links for DeepSeek Harness: the model asks, the human types into a web form, the value lands in the credential store or a file.",
   "type": "module",
   "main": "./index.mjs",
@@ -13,7 +13,8 @@
     "lib/",
     "README.md",
     "LICENSE",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "locale/"
   ],
   "license": "MIT",
   "scripts": {
