@@ -39,12 +39,31 @@ function createResponse() {
 }
 
 /** A schedule-service stub: it records the reminders a note turns into. */
-export function createSchedule() {
+/**
+ * The schedule service as the core offers it.
+ *
+ * `api: 'typed'` is the 0.2.2 shape — one request carrying a timing selector and
+ * a target; `api: 'legacy'` is the flat `(sessionId, { after_seconds })` of the
+ * older core. The fake refuses the shape it does not speak, the way the real
+ * service does, because a fake that accepts anything hides this breakage.
+ */
+export function createSchedule({ api = 'typed' } = {}) {
   const calls = [];
   return {
     calls,
-    async create(sessionId, request) {
-      calls.push({ sessionId, request });
+    async create(first, second) {
+      const typed = api === 'typed';
+      if (typed !== (typeof first === 'object' && first !== null)) {
+        throw new Error('invalid_rule: timing must contain exactly kind and its matching selector.');
+      }
+      if (typed) {
+        if (first.timing?.kind !== 'after') {
+          throw new Error('invalid_rule: timing must contain exactly kind and its matching selector.');
+        }
+        calls.push({ sessionId: first.target?.sessionId, request: first, timing: first.timing });
+        return;
+      }
+      calls.push({ sessionId: first, request: second, timing: { kind: 'after', after_seconds: second.after_seconds } });
     },
   };
 }

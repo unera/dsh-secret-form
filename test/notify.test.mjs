@@ -40,12 +40,29 @@ test('filling in a form wakes the session that created it', async () => {
   await waitFor(() => schedule.calls.length === 1);
   const [note] = schedule.calls;
   assert.equal(note.sessionId, 'session-1');
-  assert.equal(note.request.after_seconds, 1);
+  assert.deepEqual(note.request.timing, { kind: 'after', after_seconds: 1 });
+  assert.equal('after_seconds' in note.request, false, 'the flat delay is the pre-0.2.2 shape only');
   assert.equal(note.request.title, 'Secret received');
   assert.ok(note.request.prompt.includes(created.uuid));
   assert.ok(note.request.prompt.includes('credential store'));
   assert.equal(note.request.prompt.includes('sk-abc'), false);
   assert.deepEqual(pendingNotes(host), []);
+  host.close();
+});
+
+test('a host on the older core still gets its note, through the flat request', async () => {
+  const schedule = createSchedule({ api: 'legacy' });
+  const host = createHost({ schedule });
+  const created = await host.callAs('session-1', 'secret_create', { ref: 'OPENAI_API_KEY', label: LABEL, kind: 'single' });
+  await post(host, created.url, { value: 'sk-abc', action: 'save' });
+
+  await waitFor(() => schedule.calls.length === 1);
+  // The row leaves the outbox after the placement, a tick later than the call.
+  await waitFor(() => pendingNotes(host).length === 0);
+  const [note] = schedule.calls;
+  assert.equal(note.sessionId, 'session-1');
+  assert.equal(note.request.after_seconds, 1);
+  assert.equal(note.request.title, 'Secret received');
   host.close();
 });
 
