@@ -81,3 +81,34 @@ test('the note table and both stores share one file', async () => {
   }
   host.close();
 });
+
+test('the page posts back to its own link, never to "undefined"', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', { ref: 'OPENAI_API_KEY', label: LABEL, kind: 'single' });
+  const path = new URL(created.url).pathname;
+  const page = await get(host, created.url);
+  assert.ok(page.body.includes(`action="${path}"`), 'the fresh page must carry its own action');
+
+  // The record read from the database carries no token, which is the case the
+  // browser hit when the action was taken from the row instead of the request.
+  const database = host.database;
+  const second = createHost({ config: { database } });
+  const afterRestart = await get(second, created.url);
+  assert.ok(afterRestart.body.includes(`action="${path}"`), 'the reloaded page must carry its own action');
+  const posted = await post(second, created.url, { value: 'sk-from-the-page', action: 'save' });
+  assert.equal(posted.statusCode, 200);
+  second.close();
+});
+
+test('a file form page posts back to its own link too', async () => {
+  const host = createHost();
+  const created = await host.call('secret_create', {
+    label: 'Upload the log',
+    kind: 'file',
+    upload: { dir: join(host.dir, 'inbox') },
+  });
+  const path = new URL(created.url).pathname;
+  const page = await get(host, created.url);
+  assert.ok(page.body.includes(`action="${path}"`));
+  host.close();
+});

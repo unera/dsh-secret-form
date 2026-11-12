@@ -594,8 +594,10 @@ export function createRouteHandler({
 }) {
   const { routePrefix } = settings;
 
-  const pageFor = (form, locale, extra = {}) => renderFormView(form, {
-    actionPath: `${routePrefix}/${form.token}`,
+  // A record read from the database carries no token — that is the point — so
+  // the action of its page comes from the request that resolved it.
+  const pageFor = (form, actionPath, locale, extra = {}) => renderFormView(form, {
+    actionPath,
     remainingSeconds: Math.max(0, Math.round((form.expiresAt - now()) / 1000)),
     locale,
     ...extra,
@@ -621,7 +623,7 @@ export function createRouteHandler({
     shares.markNotified(share);
   };
 
-  async function handleUpload(request, response, form, locale, messages, actionPathFor) {
+  async function handleUpload(request, response, form, actionPath, locale) {
     const boundary = boundaryOf(request.headers['content-type']);
     if (boundary === undefined) {
       sendText(response, 415, 'Expected multipart/form-data');
@@ -650,7 +652,7 @@ export function createRouteHandler({
     const part = parsed.files.find((candidate) => candidate.name === 'file');
     if (part === undefined || part.data.length === 0) {
       const extra = { error: dict.errors.nofile };
-      sendHtml(response, 422, pageFor(form, effectiveLocale, extra) || renderNotice('unknown', undefined, { locale: effectiveLocale }));
+      sendHtml(response, 422, pageFor(form, actionPath, effectiveLocale, extra));
       return;
     }
     if (part.data.length > settings.maxUploadBytes) {
@@ -659,7 +661,7 @@ export function createRouteHandler({
     }
     const started = forms.beginUpload(form);
     if (started.outcome === 'busy') {
-      sendHtml(response, 409, pageFor(form, effectiveLocale, { error: dict.errors.busy }));
+      sendHtml(response, 409, pageFor(form, actionPath, effectiveLocale, { error: dict.errors.busy }));
       return;
     }
     if (started.outcome !== 'ready') {
@@ -677,7 +679,7 @@ export function createRouteHandler({
       forms.abortSubmit(form);
       logger?.warn?.(`${recordTag(form)} upload refused: ${error.message}`);
       const detail = String(error.message).slice(0, 300);
-      sendHtml(response, 500, pageFor(form, effectiveLocale, { error: format(dict.errors.upload, { detail }) }));
+      sendHtml(response, 500, pageFor(form, actionPath, effectiveLocale, { error: format(dict.errors.upload, { detail }) }));
       return;
     }
     forms.completeSubmit(form, { empty: false, trimmed: false, length: 0, lines: 0, file: facts });
@@ -692,10 +694,9 @@ export function createRouteHandler({
     });
   }
 
-  async function handleFormPost(request, response, form, url, locale) {
-    const actionPath = url;
+  async function handleFormPost(request, response, form, actionPath, locale) {
     if (form.kind === 'file') {
-      await handleUpload(request, response, form, locale, messagesFor(locale), () => actionPath);
+      await handleUpload(request, response, form, actionPath, locale);
       return;
     }
     if (!isFormPost(request)) {
@@ -724,16 +725,16 @@ export function createRouteHandler({
       return;
     }
     if (action !== 'save') {
-      sendHtml(response, 400, pageFor(form, effectiveLocale, { error: messages.errors.action }));
+      sendHtml(response, 400, pageFor(form, actionPath, effectiveLocale, { error: messages.errors.action }));
       return;
     }
     const submission = forms.beginSubmit(form, body.get('value') ?? '');
     if (submission.outcome === 'invalid') {
-      sendHtml(response, 422, pageFor(form, effectiveLocale, { error: messages.errors.empty }));
+      sendHtml(response, 422, pageFor(form, actionPath, effectiveLocale, { error: messages.errors.empty }));
       return;
     }
     if (submission.outcome === 'busy') {
-      sendHtml(response, 409, pageFor(form, effectiveLocale, { error: messages.errors.busy }));
+      sendHtml(response, 409, pageFor(form, actionPath, effectiveLocale, { error: messages.errors.busy }));
       return;
     }
     if (submission.outcome !== 'ready') {
@@ -746,7 +747,7 @@ export function createRouteHandler({
       forms.abortSubmit(form);
       logger?.warn?.(`${recordTag(form)} could not be stored: ${error.message}`);
       const detail = String(error.message).slice(0, 300);
-      sendHtml(response, 500, pageFor(form, effectiveLocale, { error: format(messages.errors.store, { detail }) }));
+      sendHtml(response, 500, pageFor(form, actionPath, effectiveLocale, { error: format(messages.errors.store, { detail }) }));
       return;
     }
     forms.completeSubmit(form, submission);
@@ -814,6 +815,7 @@ export function createRouteHandler({
       sendText(response, 404, 'Not found');
       return;
     }
+    const actionPath = `${routePrefix}/${encodeURIComponent(token)}`;
     const method = String(request.method ?? 'GET').toUpperCase();
     if (method !== 'GET' && method !== 'HEAD' && method !== 'POST') {
       sendText(response, 405, 'Method not allowed', { Allow: 'GET, HEAD, POST' });
@@ -831,14 +833,14 @@ export function createRouteHandler({
           sendHtml(response, 200, renderNotice(noticeFor(form.status, form.kind), undefined, { locale }), { head: method === 'HEAD' });
           return;
         }
-        sendHtml(response, 200, pageFor(form, locale), { head: method === 'HEAD' });
+        sendHtml(response, 200, pageFor(form, actionPath, locale), { head: method === 'HEAD' });
         return;
       }
       if (form.status !== STATUS.pending) {
         sendHtml(response, 410, renderNotice(noticeFor(form.status, form.kind), undefined, { locale }));
         return;
       }
-      await handleFormPost(request, response, form, `${routePrefix}/${form.token}`, locale);
+      await handleFormPost(request, response, form, actionPath, locale);
       return;
     }
 
@@ -847,7 +849,6 @@ export function createRouteHandler({
       sendHtml(response, 404, renderNotice('unknown', undefined, { locale }));
       return;
     }
-    const actionPath = `${routePrefix}/${token}`;
     if (method !== 'POST') {
       if (share.status !== SHARE_STATUS.pending) {
         sendHtml(response, 200, renderNotice(noticeForShare(share.status), undefined, { locale }), { head: method === 'HEAD' });

@@ -177,3 +177,12 @@ test('a share survives a restart and can still be revealed once', async () => {
   assert.equal(again.statusCode, 410);
   second.close();
 });
+
+test('the reveal page posts back to its own link', async () => {
+  const host = createHost();
+  const created = await shareFile(host);
+  const path = new URL(created.url).pathname;
+  const page = await get(host, created.url);
+  assert.ok(page.body.includes(`action="${path}"`), 'the button must post to the link that was opened');
+  host.close();
+});
