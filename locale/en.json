@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Secret forms",
-    "description": "One-time web links where the human types a secret into a form instead of the chat; the value lands in the credential store or a file."
+    "title": "Secret links",
+    "description": "One-time web links in both directions: the human types a secret into a form instead of the chat, and the model hands one over through a link whose reveal button works once. Durable in SQLite, with file uploads and a note to the session that asked."
   }
 }

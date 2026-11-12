@@ -1,7 +1,7 @@
 {
   "name": "@dr-co/dsh-secret-form",
-  "version": "0.3.0",
-  "description": "One-time secret links for DeepSeek Harness: the model asks, the human types into a web form, the value lands in the credential store or a file.",
+  "version": "0.4.0",
+  "description": "Secret links in both directions for DeepSeek Harness: the human types a secret into a one-time form, or the model hands one over through a link whose reveal button works exactly once. Durable in SQLite, with file uploads and a note to the session that asked.",
   "type": "module",
   "main": "./index.mjs",
   "exports": {
