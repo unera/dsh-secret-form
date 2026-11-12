@@ -130,3 +130,20 @@ test('the note follows the configured language', async () => {
   assert.ok(schedule.calls[0].request.prompt.includes('Ключ OpenAI'));
   host.close();
 });
+
+test('the note names the destination in its own language', async () => {
+  const schedule = createSchedule();
+  const host = createHost({ schedule, config: { language: 'ru', defaultLocale: 'ru' } });
+  const created = await host.callAs('session-1', 'secret_create', {
+    ref: 'TOKEN_X',
+    label: 'Ключ тестовый',
+    kind: 'single',
+    save: { kind: 'file', path: join(host.dir, 'out.env') },
+  });
+  await post(host, created.url, { value: 'sk-1', action: 'save' });
+  await waitFor(() => schedule.calls.length === 1);
+  const prompt = schedule.calls[0].request.prompt;
+  assert.ok(prompt.includes('файл '), prompt);
+  assert.equal(prompt.includes('the file'), false, prompt);
+  host.close();
+});

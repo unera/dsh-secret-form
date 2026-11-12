@@ -177,11 +177,32 @@ function resolveOrigin(ctx, settings) {
   }
 }
 
-/** A human sentence for where a submitted value went; used in notes and answers. */
-function describeTarget(target, ref) {
-  if (target.kind === 'credentials') return `the credential store as ${ref}`;
-  if (target.kind === 'upload') return `the directory ${target.dir}`;
-  return `the file ${target.path} (${target.format})`;
+// Where a submitted value went, said in the language of the note that carries
+// it: a Russian note with an English half-sentence reads like a bug.
+const TARGET_PHRASES = {
+  en: {
+    credentials: (ref) => `the credential store as ${ref}`,
+    upload: (dir) => `the directory ${dir}`,
+    file: (path, format) => `the file ${path} (${format})`,
+  },
+  ru: {
+    credentials: (ref) => `хранилище учётных данных, ключ ${ref}`,
+    upload: (dir) => `каталог ${dir}`,
+    file: (path, format) => `файл ${path} (${format})`,
+  },
+  zh: {
+    credentials: (ref) => `凭据库中的 ${ref}`,
+    upload: (dir) => `目录 ${dir}`,
+    file: (path, format) => `文件 ${path}（${format}）`,
+  },
+};
+
+/** A human phrase for where a submitted value went; used in notes. */
+export function describeTarget(target, ref, language = 'en') {
+  const phrases = TARGET_PHRASES[language] ?? TARGET_PHRASES.en;
+  if (target.kind === 'credentials') return phrases.credentials(ref);
+  if (target.kind === 'upload') return phrases.upload(target.dir);
+  return phrases.file(target.path, target.format);
 }
 
 const NOTE_TARGET_LIMIT = 160;
@@ -757,7 +778,7 @@ export function createRouteHandler({
     noteForm(NOTE_KINDS.formSaved, form, {
       label: form.label,
       ref: form.ref,
-      target: describeTarget(form.target, form.ref).slice(0, NOTE_TARGET_LIMIT),
+      target: describeTarget(form.target, form.ref, settings.language).slice(0, NOTE_TARGET_LIMIT),
     });
   }
 
