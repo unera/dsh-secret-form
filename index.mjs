@@ -158,10 +158,10 @@ function resolveLogger(ctx) {
   return ctx?.logger ?? console;
 }
 
-// Only the first eight characters of a token are ever logged: the rest is the
-// capability itself.
-function tokenTag(token) {
-  return typeof token === 'string' ? token.slice(0, 8) : '????????';
+// Only the first eight characters of an identifier are ever logged: a token's
+// tail is the capability itself, so records are logged by their uuid.
+function recordTag(record) {
+  return typeof record?.uuid === 'string' ? record.uuid.slice(0, 8) : '????????';
 }
 
 function resolveOrigin(ctx, settings) {
@@ -351,7 +351,7 @@ export function registerTools(ctx, { forms, shares, settings, logger, notifier, 
         notify,
       });
       const url = `${resolveOrigin(hostCtx, settings)}${settings.routePrefix}/${form.token}`;
-      logger?.info?.(`[dsh-secret-form] created form ${tokenTag(form.token)} for ${ref} (${kind})`);
+      logger?.info?.(`created form ${recordTag(form)} for ${ref} (${kind})`);
       return {
         uuid: form.uuid,
         url,
@@ -424,7 +424,7 @@ export function registerTools(ctx, { forms, shares, settings, logger, notifier, 
         notify,
       });
       const url = `${resolveOrigin(hostCtx, settings)}${settings.routePrefix}/${share.token}`;
-      logger?.info?.(`[dsh-secret-form] created share ${tokenTag(share.token)} (${source.source}, ${source.value.length} chars)`);
+      logger?.info?.(`created share ${recordTag(share)} (${source.source}, ${source.value.length} chars)`);
       return {
         uuid: share.uuid,
         url,
@@ -501,7 +501,7 @@ export function registerTools(ctx, { forms, shares, settings, logger, notifier, 
       const found = requireRecord(forms, shares, args.uuid);
       if (found.form !== undefined) {
         const cancelled = forms.cancel(found.form);
-        logger?.info?.(`[dsh-secret-form] cancelled form ${cancelled.uuid}`);
+        logger?.info?.(`cancelled form ${cancelled.uuid}`);
         if (cancelled.status === STATUS.cancelled && cancelled.notify && notifier !== undefined) {
           notifier.queue({
             kind: NOTE_KINDS.formCancelled,
@@ -514,7 +514,7 @@ export function registerTools(ctx, { forms, shares, settings, logger, notifier, 
         return publicResult(cancelled);
       }
       const share = shares.cancel(found.share);
-      logger?.info?.(`[dsh-secret-form] cancelled share ${share.uuid}`);
+      logger?.info?.(`cancelled share ${share.uuid}`);
       return publicShareResult(share);
     },
   });
@@ -642,7 +642,7 @@ export function createRouteHandler({
     const dict = messagesFor(effectiveLocale);
     if (action === 'cancel') {
       forms.cancel(form);
-      logger?.info?.(`[dsh-secret-form] cancelled form ${tokenTag(form.token)}`);
+      logger?.info?.(`cancelled form ${recordTag(form)}`);
       sendHtml(response, 200, renderNotice('cancelled', undefined, { locale: effectiveLocale }));
       noteForm(NOTE_KINDS.formCancelled, form, { label: form.label, ref: form.ref });
       return;
@@ -675,13 +675,13 @@ export function createRouteHandler({
       });
     } catch (error) {
       forms.abortSubmit(form);
-      logger?.warn?.(`[dsh-secret-form] ${tokenTag(form.token)} upload refused: ${error.message}`);
+      logger?.warn?.(`${recordTag(form)} upload refused: ${error.message}`);
       const detail = String(error.message).slice(0, 300);
       sendHtml(response, 500, pageFor(form, effectiveLocale, { error: format(dict.errors.upload, { detail }) }));
       return;
     }
     forms.completeSubmit(form, { empty: false, trimmed: false, length: 0, lines: 0, file: facts });
-    logger?.info?.(`[dsh-secret-form] ${tokenTag(form.token)} stored ${facts.size} bytes as ${facts.path}`);
+    logger?.info?.(`${recordTag(form)} stored ${facts.size} bytes as ${facts.path}`);
     sendHtml(response, 200, renderNotice('uploaded', undefined, { locale: effectiveLocale }));
     noteForm(NOTE_KINDS.formUploaded, form, {
       label: form.label,
@@ -718,7 +718,7 @@ export function createRouteHandler({
     const action = body.get('action');
     if (action === 'cancel') {
       forms.cancel(form);
-      logger?.info?.(`[dsh-secret-form] cancelled ${tokenTag(form.token)}`);
+      logger?.info?.(`cancelled ${recordTag(form)}`);
       sendHtml(response, 200, renderNotice('cancelled', undefined, { locale: effectiveLocale }));
       noteForm(NOTE_KINDS.formCancelled, form, { label: form.label, ref: form.ref });
       return;
@@ -744,13 +744,13 @@ export function createRouteHandler({
       await writeSecret(form.target, form.ref, submission.value, { credentials: credentialsOf() });
     } catch (error) {
       forms.abortSubmit(form);
-      logger?.warn?.(`[dsh-secret-form] ${tokenTag(form.token)} could not be stored: ${error.message}`);
+      logger?.warn?.(`${recordTag(form)} could not be stored: ${error.message}`);
       const detail = String(error.message).slice(0, 300);
       sendHtml(response, 500, pageFor(form, effectiveLocale, { error: format(messages.errors.store, { detail }) }));
       return;
     }
     forms.completeSubmit(form, submission);
-    logger?.info?.(`[dsh-secret-form] ${tokenTag(form.token)} ${form.status}`);
+    logger?.info?.(`${recordTag(form)} ${form.status}`);
     const note = submission.matchesExpect === false ? messages.mismatchNote : undefined;
     sendHtml(response, 200, renderNotice(submission.empty ? 'empty' : 'saved', note, { locale: effectiveLocale }));
     noteForm(NOTE_KINDS.formSaved, form, {
@@ -783,11 +783,11 @@ export function createRouteHandler({
     const at = now();
     const revealed = shares.reveal(share);
     if (revealed.value === undefined) {
-      logger?.info?.(`[dsh-secret-form] share ${tokenTag(share.token)} not revealed: ${revealed.status}`);
+      logger?.info?.(`share ${recordTag(share)} not revealed: ${revealed.status}`);
       sendHtml(response, 410, renderNotice(noticeForShare(revealed.status), undefined, { locale: effectiveLocale }));
       return;
     }
-    logger?.info?.(`[dsh-secret-form] share ${tokenTag(share.token)} revealed at ${new Date(at).toISOString()}`);
+    logger?.info?.(`share ${recordTag(share)} revealed at ${new Date(at).toISOString()}`);
     sendHtml(response, 200, renderRevealedView(share, { value: revealed.value, locale: effectiveLocale }));
     noteShare(NOTE_KINDS.shareRevealed, share, { label: share.label });
   }
@@ -917,7 +917,7 @@ export function apply(ctx, config = {}) {
     ctx.webServer.register(route);
   }
   registerTools(ctx, { forms, shares, settings, logger, notifier, ctx });
-  logger?.info?.(`[dsh-secret-form] ready: ${settings.database}`);
+  logger?.info?.(`ready: ${settings.database}`);
 }
 
 export default Object.freeze({ name, inject, apply, normalizeConfig, registerTools, createRouteHandler });
