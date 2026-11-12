@@ -882,7 +882,11 @@ export function apply(ctx, config = {}) {
   // `schedule` is what actually wakes a session: the service owns the timer and
   // resumes the session itself. It may mount after this plugin does, which is
   // why the notifier asks for it on every attempt instead of capturing it once.
-  let scheduling = ctx?.schedule;
+  //
+  // Cordis refuses a bare `ctx.schedule` for a service the plugin did not
+  // declare in `inject` — the property getter throws — so an optional service is
+  // read through `ctx.get`, which answers undefined instead.
+  let scheduling = typeof ctx?.get === 'function' ? ctx.get('schedule') : ctx?.schedule;
   let notifier;
   if (typeof ctx?.inject === 'function') {
     ctx.inject(['schedule'], (child) => {
