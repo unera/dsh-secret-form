@@ -11,14 +11,14 @@ import { createHost, createSchedule, post, postMultipart } from './helpers.mjs';
 
 const LABEL = 'OpenAI key';
 
+// The timer must stay referenced: the note queue deliberately holds no handle
+// of its own, so an unref'd poll lets the event loop drain under the test and
+// Node 22 cancels the whole subtest.
 async function waitFor(check, ms = 2000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     if (check()) return;
-    await new Promise((done) => {
-      const timer = setTimeout(done, 10);
-      timer.unref?.();
-    });
+    await new Promise((done) => setTimeout(done, 10));
   }
   throw new Error('the condition did not become true in time');
 }

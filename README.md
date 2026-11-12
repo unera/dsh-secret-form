@@ -344,7 +344,9 @@ clock with SQL instead of sleeping.
 
 ## Limits
 
-- Node >= 22, zero runtime dependencies.
+- Node >= 22.13, zero runtime dependencies: `node:sqlite` stopped needing
+  `--experimental-sqlite` in 22.13.0, and on 22 it still prints an experimental
+  warning.
 - The page is served by the Web GUI host only; a headless composition with no
   `webServer` cannot use this plugin.
 - `label` is 2..5 words and `description` 300 characters: the page is a prompt
